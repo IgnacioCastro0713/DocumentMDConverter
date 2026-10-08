@@ -30,6 +30,17 @@ A hybrid engine: [**anydoc**](https://github.com/firecrawl/anydoc) (native Rust 
 
 ---
 
+## 🖼️ Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/history.png" alt="Recent Conversions: history, engine and metrics"><br><sub><b>Recent Conversions</b>: search, filters, engine and metrics</sub></td>
+    <td width="50%"><img src="docs/markdown-preview.png" alt="Markdown Preview: live editor and rendered view"><br><sub><b>Markdown Preview</b>: live editor with Mermaid support</sub></td>
+  </tr>
+</table>
+
+---
+
 ## 🦀 2. Powered by anydoc
 
 [**anydoc**](https://github.com/firecrawl/anydoc) by Firecrawl is the core of this project. It is a Rust CLI that converts office documents and PDFs to Markdown without any external service.
