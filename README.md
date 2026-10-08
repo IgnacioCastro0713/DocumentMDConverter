@@ -4,7 +4,7 @@
 
 **Turn Word, PowerPoint, Excel, PDF and images into clean, LLM-ready Markdown.**
 
-![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
+![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
 ![Blazor Server](https://img.shields.io/badge/Blazor-Server-5C2D91)
 ![Cloud Run](https://img.shields.io/badge/GCP-Cloud%20Run-4285F4?logo=googlecloud&logoColor=white)
 ![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
