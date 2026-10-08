@@ -86,21 +86,34 @@ Clean Architecture layers: `Domain` → `Application` → `Infrastructure` → `
 
 ### Conversion flow
 
+Every upload, from the UI or from `POST /api/documents/convert`, goes through the same orchestrator (`DocumentConverterService`):
+
 ```mermaid
 flowchart TD
-    A["Upload"] --> V{"Valid? not .epub, ≤ 30 MB"}
-    V -->|"no"| E["Validation error"]
-    V -->|"yes"| I{"Image?"}
+    A["1. Upload"] --> V{"2. Valid? not empty, not .epub, ≤ 30 MB"}
+    V -->|"no"| E["Typed error (400)"]
+    V -->|"yes"| T["3. Buffer to temp file + save original to GCS"]
+    T --> I{"4. Image?"}
     I -->|"yes"| OCR["Cloud Vision OCR"]
     I -->|"no"| AD["anydoc (60 s timeout)"]
-    AD -->|"ok"| MD["Markdown"]
-    AD -->|"needs OCR"| OCR
+    AD -->|"ok"| MD["5. Markdown"]
+    AD -->|"needs OCR + fallback enabled"| OCR
+    AD -->|"other error"| E2["Typed error (422 / 504 / 500)"]
     OCR --> MD
-    MD --> S["Save output + metadata.json to GCS"]
+    MD --> M["6. Words, characters, ~tokens"]
+    M --> S["7. Save .md + metadata.json to GCS (expires in 7 days)"]
+    S --> R["8. Result: Markdown, engine used, metrics"]
 ```
 
-Storage failures are non-fatal: the Markdown is still returned, it just will not appear in history.
-
+| Step | What happens |
+| :--- | :--- |
+| 1-2. **Validate** | Rejects empty files, `.epub` and anything over 30 MB before any work is done. |
+| 3. **Stage** | The file is copied to a temp file (deleted at the end, even on failure). If Cloud Storage is configured, the original is also stored under `users/<email>/<jobId>/input/` so it can be downloaded later. |
+| 4. **Pick the engine** | Images go straight to Cloud Vision. Everything else goes to **anydoc**, which is free and local. |
+| 5. **Fallback** | If anydoc reports a PDF with no text layer (exit code `3`) and `enableOcrFallback` is on, the same file is sent to Cloud Vision. If it is off, the caller gets a `422`. |
+| 6. **Metrics** | Words, characters and estimated tokens (characters ÷ 3.8), shown as pills in the viewer. |
+| 7. **Persist** | The Markdown and a `metadata.json` are saved for the history. A storage failure is **non-fatal**: the Markdown is still returned, it just will not appear in history. |
+| 8. **Result** | The response says which engine produced the text (`anydoc` or `Google Cloud Vision OCR`). |
 ### 💡 Architectural Decision: Local Engine First, Paid OCR Only When Needed
 
 - **The naive approach:** send every document to a cloud OCR/AI API. Simple, but it costs money per page and adds latency and a hard dependency on the network, even for documents that already contain selectable text.
