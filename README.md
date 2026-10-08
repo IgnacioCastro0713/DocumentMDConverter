@@ -2,7 +2,9 @@
 
 # 📄 DocumentMDConverter
 
-**Turn Word, PowerPoint, Excel, PDF and images into clean, LLM-ready Markdown.**
+**Turn Word, PowerPoint, Excel/CSV, PDF and images into clean, structured Markdown (GFM), optimized for LLMs (Gemini, Claude, GPT) and human review.**
+
+A hybrid engine: [**anydoc**](https://github.com/firecrawl/anydoc) (native Rust CLI, $0 compute) with automatic fallback to **Google Cloud Vision OCR** for scanned PDFs and images.
 
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
 ![Blazor Server](https://img.shields.io/badge/Blazor-Server-5C2D91)
