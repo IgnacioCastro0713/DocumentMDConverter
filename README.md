@@ -10,11 +10,13 @@
 ![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
 ![Powered by anydoc](https://img.shields.io/badge/powered%20by-anydoc%20(Rust)-DEA584?logo=rust&logoColor=white)
 
-![DocumentMDConverter UI](docs/screenshot.png)
+<img src="docs/screenshot.png" alt="DocumentMDConverter UI" width="900">
 
 </div>
 
-## ✨ Highlights
+---
+
+## ✨ 1. Highlights
 
 - ⚡ **Fast and cheap:** conversion runs on [`anydoc`](https://github.com/firecrawl/anydoc), a native Rust engine, so there is no per-document API cost.
 - 🔍 **Smart OCR fallback:** scanned PDFs and images go to Google Cloud Vision automatically, only when needed.
@@ -24,7 +26,9 @@
 - 🌗 **Light and dark themes.**
 - ☁️ **Serverless:** one container on Cloud Run, no database, Terraform included.
 
-## 🦀 Powered by anydoc
+---
+
+## 🦀 2. Powered by anydoc
 
 [**anydoc**](https://github.com/firecrawl/anydoc) by Firecrawl is the core of this project. It is a Rust CLI that converts office documents and PDFs to Markdown without any external service.
 
@@ -35,7 +39,9 @@
 
 Many thanks to the Firecrawl team for building it. 🙌
 
-## 🧭 Supported formats
+---
+
+## 🧭 3. Supported Formats
 
 | Input | Engine | Output |
 | :--- | :--- | :--- |
@@ -48,7 +54,9 @@ Many thanks to the Firecrawl team for building it. 🙌
 
 `.epub` is rejected.
 
-## 🏗️ Architecture
+---
+
+## 🏛️ 4. System Architecture
 
 One .NET 10 monolith (Blazor Server + Minimal APIs) in a single Cloud Run container. Google Cloud Storage holds files, outputs and history metadata; a lifecycle rule purges everything after 7 days.
 
@@ -93,7 +101,21 @@ flowchart TD
 
 Storage failures are non-fatal: the Markdown is still returned, it just will not appear in history.
 
-## 🚀 Quick start
+### 💡 Architectural Decision: Local Engine First, Paid OCR Only When Needed
+
+- **The naive approach:** send every document to a cloud OCR/AI API. Simple, but it costs money per page and adds latency and a hard dependency on the network, even for documents that already contain selectable text.
+- **Our approach:** `anydoc` converts text-based files locally in-process-tree. Only when it reports that a PDF has no text layer (exit code `3`) does the app call Cloud Vision, which gives 1,000 free pages per month.
+- **Conclusion:** most documents cost **$0**, and the paid path is limited to files that really need it.
+
+### 💡 Architectural Decision: Serverless Persistence and Zero-RAM Downloads
+
+- **No database:** history is just `metadata.json` objects under a per-user prefix in Cloud Storage. A bucket lifecycle rule deletes everything after 7 days, so there is nothing to clean up or migrate.
+- **No streaming through the app:** downloads are a `302` redirect to a short-lived V4 signed URL, so file bytes never pass through Cloud Run memory.
+- **Session affinity** keeps each Blazor circuit pinned to one Cloud Run instance.
+
+---
+
+## 🚀 5. Quick Start
 
 Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/) and [Node.js 20+](https://nodejs.org/) (for `anydoc` via `npx`). Cloud Vision and Cloud Storage need `gcloud auth application-default login`, but plain conversions work without them.
 
@@ -103,7 +125,9 @@ dotnet run --project src/DocumentMDConverter.Web/DocumentMDConverter.Web.csproj
 
 Open `http://localhost:5070`. To enable history locally, copy `appsettings.Example.json` to `appsettings.Local.json` (git-ignored) and set your bucket.
 
-## 🔌 REST API
+---
+
+## 🔌 6. REST API
 
 | Method | Route | Description |
 | :--- | :--- | :--- |
@@ -118,7 +142,9 @@ Open `http://localhost:5070`. To enable history locally, copy `appsettings.Examp
 curl -X POST http://localhost:5070/api/documents/convert -F "file=@report.docx" -F "enableOcrFallback=true"
 ```
 
-## ⚙️ Configuration
+---
+
+## ⚙️ 7. Configuration
 
 | Setting | Purpose |
 | :--- | :--- |
@@ -126,7 +152,9 @@ curl -X POST http://localhost:5070/api/documents/convert -F "file=@report.docx" 
 | `ANYDOC_BIN_PATH` | Path to the `anydoc` binary. Falls back to `/usr/bin/anydoc`, then `npx @firecrawl/anydoc`. |
 | `Iap:DefaultDevUserEmail` | Identity used locally when there is no IAP header. |
 
-## 🐳 Docker and deployment
+---
+
+## 🐳 8. Docker & Deployment
 
 ```bash
 docker build -f src/DocumentMDConverter.Web/Dockerfile -t document-md-converter .
@@ -134,14 +162,18 @@ docker build -f src/DocumentMDConverter.Web/Dockerfile -t document-md-converter 
 
 The image installs Node.js and `@firecrawl/anydoc`. Infrastructure (Cloud Run, Storage, IAM, Artifact Registry) is Terraform in [`infra/`](infra/README.md), which also covers the release procedure.
 
-## ⚠️ Known limitations
+---
+
+## ⚠️ 9. Known Limitations
 
 - Limits: 30 MB per upload, 20 files per batch (processed sequentially). Vision OCR for PDFs: ≤ 10 MB and ≤ 5 pages.
 - ZIP files are built in memory.
 - The history download endpoints do not check that `path` belongs to the caller. They rely on IAP and unguessable job IDs, so add a `users/<caller>/` prefix check before wider exposure.
 - Mermaid loads from a CDN, so offline environments show the diagram source.
 
-## 📚 Documentation
+---
+
+## 📚 10. Further Documentation
 
 - [`specs/ARCHITECTURE.md`](specs/ARCHITECTURE.md): technical architecture, storage schema, sequence diagrams
 - [`specs/UI_UX_SPEC.md`](specs/UI_UX_SPEC.md): design system and component behavior
