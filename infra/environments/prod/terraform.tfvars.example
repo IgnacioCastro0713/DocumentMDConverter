@@ -1,0 +1,10 @@
+﻿# Google Cloud Project Configuration for PROD
+project_id             = "<project_id>"
+region                 = "us-central1"
+container_image        = "us-central1-docker.pkg.dev/<project_id>/document-md-converter-prod/app:v0.0.1"
+
+# access vía IAP (roles/iap.httpsResourceAccessor)
+iap_authorized_domains = ["user:person1@example.com", "user:person2@example.com"]
+
+
+bucket_prefix          = "<globally-unique-prefix>"

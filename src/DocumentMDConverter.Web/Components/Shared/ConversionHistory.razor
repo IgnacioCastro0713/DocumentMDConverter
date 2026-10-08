@@ -1,0 +1,654 @@
+@using DocumentMDConverter.Domain.Common
+@using DocumentMDConverter.Domain.Models
+@using DocumentMDConverter.Application.Interfaces
+@using DocumentMDConverter.Web.Endpoints
+@inject ICloudStorageService CloudStorage
+@inject IUserContextService UserContext
+@inject IJSRuntime JS
+@inject ILogger<ConversionHistory> Logger
+
+<div class="minimal-panel p-4">
+    <!-- Panel Header: Clean & Compact -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3" style="border-bottom: 1px solid var(--border-subtle);">
+        <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; border-radius: 8px; background: var(--accent-soft-subtle); color: var(--accent-soft);">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+            </div>
+            <div>
+                <div class="d-flex align-items-center gap-2">
+                    <h6 class="m-0 theme-text-primary fw-semibold" style="font-size: 1.05rem;">Recent Conversions</h6>
+                    <span class="retention-subtle-tag" title="Stored securely in Google Cloud Storage for 7 days">
+                        7-day cloud retention
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" 
+                    class="btn-history-action" 
+                    @onclick="RefreshAsync" 
+                    disabled="@isLoading"
+                    title="Refresh conversion list">
+                <svg class="@(isLoading ? "spin-icon" : "")" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                <span>@(isLoading ? "Refreshing..." : "Refresh")</span>
+            </button>
+        </div>
+    </div>
+
+    @* State: Loading *@
+    @if (isLoading)
+    {
+        <div class="text-center py-5 theme-text-secondary" style="font-size: 0.88rem;">
+            <div class="spinner-border spinner-border-sm me-2 text-primary" role="status"></div>
+            Loading recent conversions from Google Cloud Storage...
+        </div>
+    }
+    @* State: Empty *@
+    else if (historyItems.Count == 0)
+    {
+        <div class="text-center py-5 theme-text-muted" style="font-size: 0.88rem;">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mb-2 opacity-50">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+            </svg>
+            <div>No conversions found in the last 7 days.</div>
+            <div style="font-size: 0.8rem;" class="mt-1">Converted documents will appear here automatically.</div>
+        </div>
+    }
+    @* State: Populated Items *@
+    else
+    {
+        <!-- Desktop Master-Detail Split View (>= 992px) -->
+        <div class="d-none d-lg-grid history-split-container">
+            <!-- Sidebar Playlist: Clean, Compact List Items -->
+            <div class="history-sidebar-pane">
+                <!-- Search & Filters -->
+                <div class="mb-2">
+                    <div class="history-search-input-wrapper mb-2">
+                        <svg class="history-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" 
+                               class="form-control history-search-input" 
+                               placeholder="Search conversions..." 
+                               @bind="searchQuery" 
+                               @bind:event="oninput" />
+                        @if (!string.IsNullOrWhiteSpace(searchQuery))
+                        {
+                            <button type="button" class="history-search-clear-btn" @onclick="() => searchQuery = string.Empty" title="Clear search">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        }
+                    </div>
+
+                    <div class="history-filter-pills">
+                        @foreach (string format in availableFormats)
+                        {
+                            <button type="button" 
+                                    class="history-filter-pill @(selectedFormat == format ? "active" : "")" 
+                                    @onclick="() => SetFormatFilter(format)">
+                                @format
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                @if (selectedJobIds.Count > 0)
+                {
+                    <div class="d-flex align-items-center justify-content-between p-2 mb-2 rounded-2" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle);">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-semibold theme-text-primary" style="font-size: 0.8rem;">
+                                @selectedJobIds.Count selected
+                            </span>
+                            <button type="button" class="btn p-0 border-0 theme-text-muted" style="font-size: 0.72rem; text-decoration: underline;" @onclick="() => selectedJobIds.Clear()">
+                                Clear
+                            </button>
+                        </div>
+                        <button type="button" class="btn-minimal-primary btn-sm py-1 px-2" style="font-size: 0.76rem;" @onclick="DownloadSelectedZipAsync" disabled="@isDownloadingSelectedZip">
+                            @if (isDownloadingSelectedZip)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px;"></span>
+                                <span>Generating ZIP...</span>
+                            }
+                            else
+                            {
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                                <span>Download ZIP (@selectedJobIds.Count)</span>
+                            }
+                        </button>
+                    </div>
+                }
+
+                <div class="history-sidebar-header d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="checkbox" 
+                               class="form-check-input m-0 align-self-center" 
+                               style="cursor: pointer; width: 14px; height: 14px;"
+                               checked="@(FilteredHistoryItems.Any() && FilteredHistoryItems.All(x => selectedJobIds.Contains(x.JobId)))"
+                               @onchange="ToggleSelectAll"
+                               title="Select all filtered conversions" />
+                        <span class="theme-text-muted" style="font-size: 0.76rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">
+                            @if (IsFiltered)
+                            {
+                                <span>Showing @FilteredHistoryItems.Count() of @historyItems.Count</span>
+                            }
+                            else
+                            {
+                                <span>Conversions (@historyItems.Count)</span>
+                            }
+                        </span>
+                    </div>
+                    @if (IsFiltered)
+                    {
+                        <button type="button" class="btn p-0 border-0 theme-text-accent" style="font-size: 0.72rem; text-decoration: none;" @onclick="ResetFilters">
+                            Reset
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="theme-text-muted" style="font-size: 0.72rem;">Click to view</span>
+                    }
+                </div>
+
+                @if (!FilteredHistoryItems.Any())
+                {
+                    <div class="history-empty-search text-center p-3 my-2 theme-text-muted">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="mb-2 opacity-50">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <div style="font-size: 0.82rem;" class="fw-medium theme-text-primary mb-1">No matching conversions</div>
+                        <p class="mb-2" style="font-size: 0.76rem;">No files matched your search or filter.</p>
+                        <button type="button" class="btn-minimal-secondary btn-sm py-1 px-2" style="font-size: 0.72rem;" @onclick="ResetFilters">
+                            Clear filters
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="history-sidebar-list">
+                        @foreach (ConversionHistoryItem item in FilteredHistoryItems)
+                        {
+                            <HistoryListItem 
+                                Item="item"
+                                IsSelected="@(selectedJobId == item.JobId)"
+                                IsChecked="@(selectedJobIds.Contains(item.JobId))"
+                                OnToggleCheck="chk => ToggleSelectItem(item.JobId, chk)"
+                                OnSelect="it => LoadIntoViewerAsync(it, false)" />
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Right Pane: Desktop Full Viewer -->
+            <div class="history-viewer-pane">
+                @if (selectedResult != null)
+                {
+                    <MarkdownViewer 
+                        Result="selectedResult" 
+                        OriginalDownloadUrl="@(!string.IsNullOrWhiteSpace(selectedOriginalPath) ? $"/api/history/download?path={Uri.EscapeDataString(selectedOriginalPath)}" : null)" />
+                }
+                else
+                {
+                    <div class="minimal-panel p-5 text-center theme-text-muted d-flex flex-column align-items-center justify-content-center" style="min-height: 420px;">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mb-3 opacity-40">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <h6 class="theme-text-primary fw-medium mb-1">Select a document</h6>
+                        <p class="theme-text-secondary mb-0" style="font-size: 0.85rem;">Choose any document from the list to preview, copy, or download its contents.</p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Mobile & Tablet Responsive View (< 992px) -->
+        <div class="d-lg-none">
+            @if (isMobileViewing && selectedResult != null)
+            {
+                <div class="mb-3">
+                    <button type="button" class="btn-minimal-secondary d-inline-flex align-items-center gap-2" @onclick="CloseMobileViewer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                        <span>Back to conversions</span>
+                    </button>
+                </div>
+
+                <MarkdownViewer 
+                    Result="selectedResult" 
+                    OriginalDownloadUrl="@(!string.IsNullOrWhiteSpace(selectedOriginalPath) ? $"/api/history/download?path={Uri.EscapeDataString(selectedOriginalPath)}" : null)" />
+            }
+            else
+            {
+                <div class="history-mobile-list">
+                    <!-- Search & Filters -->
+                    <div class="mb-2">
+                        <div class="history-search-input-wrapper mb-2">
+                            <svg class="history-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input type="text" 
+                                   class="form-control history-search-input" 
+                                   placeholder="Search conversions..." 
+                                   @bind="searchQuery" 
+                                   @bind:event="oninput" />
+                            @if (!string.IsNullOrWhiteSpace(searchQuery))
+                            {
+                                <button type="button" class="history-search-clear-btn" @onclick="() => searchQuery = string.Empty" title="Clear search">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            }
+                        </div>
+
+                        <div class="history-filter-pills">
+                            @foreach (string format in availableFormats)
+                            {
+                                <button type="button" 
+                                        class="history-filter-pill @(selectedFormat == format ? "active" : "")" 
+                                        @onclick="() => SetFormatFilter(format)">
+                                    @format
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    @if (selectedJobIds.Count > 0)
+                    {
+                        <div class="d-flex align-items-center justify-content-between p-2 mb-2 rounded-2" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle);">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-semibold theme-text-primary" style="font-size: 0.8rem;">
+                                    @selectedJobIds.Count selected
+                                </span>
+                                <button type="button" class="btn p-0 border-0 theme-text-muted" style="font-size: 0.72rem; text-decoration: underline;" @onclick="() => selectedJobIds.Clear()">
+                                    Clear
+                                </button>
+                            </div>
+                            <button type="button" class="btn-minimal-primary btn-sm py-1 px-2" style="font-size: 0.76rem;" @onclick="DownloadSelectedZipAsync" disabled="@isDownloadingSelectedZip">
+                                @if (isDownloadingSelectedZip)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px;"></span>
+                                    <span>ZIP...</span>
+                                }
+                                else
+                                {
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                    <span>ZIP (@selectedJobIds.Count)</span>
+                                }
+                            </button>
+                        </div>
+                    }
+
+                    <div class="history-sidebar-header d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="checkbox" 
+                                   class="form-check-input m-0 align-self-center" 
+                                   style="cursor: pointer; width: 14px; height: 14px;"
+                                   checked="@(FilteredHistoryItems.Any() && FilteredHistoryItems.All(x => selectedJobIds.Contains(x.JobId)))"
+                                   @onchange="ToggleSelectAll"
+                                   title="Select all filtered conversions" />
+                            <span class="theme-text-muted" style="font-size: 0.76rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">
+                                @if (IsFiltered)
+                                {
+                                    <span>Showing @FilteredHistoryItems.Count() of @historyItems.Count</span>
+                                }
+                                else
+                                {
+                                    <span>Conversions (@historyItems.Count)</span>
+                                }
+                            </span>
+                        </div>
+                        @if (IsFiltered)
+                        {
+                            <button type="button" class="btn p-0 border-0 theme-text-accent" style="font-size: 0.72rem; text-decoration: none;" @onclick="ResetFilters">
+                                Reset
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="theme-text-muted" style="font-size: 0.72rem;">Tap to view</span>
+                        }
+                    </div>
+
+                    @if (!FilteredHistoryItems.Any())
+                    {
+                        <div class="history-empty-search text-center p-3 my-2 theme-text-muted">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="mb-2 opacity-50">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <div style="font-size: 0.82rem;" class="fw-medium theme-text-primary mb-1">No matching conversions</div>
+                            <p class="mb-2" style="font-size: 0.76rem;">No files matched your search or filter.</p>
+                            <button type="button" class="btn-minimal-secondary btn-sm py-1 px-2" style="font-size: 0.72rem;" @onclick="ResetFilters">
+                                Clear filters
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column gap-2">
+                            @foreach (ConversionHistoryItem item in FilteredHistoryItems)
+                            {
+                                <HistoryListItem 
+                                    Item="item"
+                                    IsSelected="@(selectedJobId == item.JobId)"
+                                    IsChecked="@(selectedJobIds.Contains(item.JobId))"
+                                    OnToggleCheck="chk => ToggleSelectItem(item.JobId, chk)"
+                                    OnSelect="it => LoadIntoViewerAsync(it,  true)" />
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback<ConversionResult> OnLoadResult { get; set; }
+
+    private List<ConversionHistoryItem> historyItems = [];
+    private bool isLoading = true;
+    private string currentUserEmail = string.Empty;
+    private string? loadingJobId;
+    private string? copiedJobId;
+    private bool hasRenderedOnce;
+
+    // Multi-selection states
+    private readonly HashSet<string> selectedJobIds = [];
+    private bool isDownloadingSelectedZip;
+
+    private ConversionResult? selectedResult;
+    private string? selectedJobId;
+    private string? selectedOriginalPath;
+    private bool isMobileViewing;
+
+    private string searchQuery = string.Empty;
+    private string selectedFormat = "ALL";
+    private static readonly string[] availableFormats = ["ALL", "PDF", "PPTX", "DOCX", "XLSX", "IMG"];
+
+    private bool IsFiltered => !string.IsNullOrWhiteSpace(searchQuery) ||
+                               (!string.IsNullOrWhiteSpace(selectedFormat) && !selectedFormat.Equals("ALL", StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<ConversionHistoryItem> FilteredHistoryItems
+    {
+        get
+        {
+            IEnumerable<ConversionHistoryItem> query = historyItems;
+
+            if (!string.IsNullOrWhiteSpace(selectedFormat) && !selectedFormat.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(item =>
+                {
+                    string ext = Path.GetExtension(item.OriginalFileName).TrimStart('.').ToUpperInvariant();
+                    if (selectedFormat == "IMG")
+                    {
+                        return ext is "PNG" or "JPG" or "JPEG" or "GIF" or "WEBP";
+                    }
+                    return ext == selectedFormat;
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                string term = searchQuery.Trim();
+                query = query.Where(item => item.OriginalFileName.Contains(term, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return query;
+        }
+    }
+
+    private void SetFormatFilter(string format)
+    {
+        selectedFormat = format;
+    }
+
+    private void ResetFilters()
+    {
+        searchQuery = string.Empty;
+        selectedFormat = "ALL";
+    }
+
+    private void ToggleSelectItem(string jobId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            selectedJobIds.Add(jobId);
+        }
+        else
+        {
+            selectedJobIds.Remove(jobId);
+        }
+    }
+
+    private void ToggleSelectAll()
+    {
+        var currentFiltered = FilteredHistoryItems.ToList();
+        if (currentFiltered.Count > 0 && currentFiltered.All(x => selectedJobIds.Contains(x.JobId)))
+        {
+            foreach (var item in currentFiltered)
+            {
+                selectedJobIds.Remove(item.JobId);
+            }
+        }
+        else
+        {
+            foreach (var item in currentFiltered)
+            {
+                selectedJobIds.Add(item.JobId);
+            }
+        }
+    }
+
+    private async Task DownloadSelectedZipAsync()
+    {
+        var itemsToDownload = historyItems
+            .Where(x => selectedJobIds.Contains(x.JobId))
+            .Select(x => new BatchZipItem(x.JobId, x.OriginalFileName, x.MarkdownObjectPath))
+            .ToList();
+
+        if (itemsToDownload.Count == 0) return;
+
+        isDownloadingSelectedZip = true;
+        StateHasChanged();
+
+        try
+        {
+            var payload = new BatchZipRequest(itemsToDownload);
+            string zipName = $"history-export-{DateTime.UtcNow:yyyyMMdd-HHmmss}.zip";
+            await JS.InvokeVoidAsync("converterUtils.downloadFromPost", "/api/batch/zip", payload, zipName);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to download selected history ZIP");
+        }
+        finally
+        {
+            isDownloadingSelectedZip = false;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !hasRenderedOnce)
+        {
+            hasRenderedOnce = true;
+            try
+            {
+                currentUserEmail = UserContext.GetCurrentUserEmail();
+            }
+            catch
+            {
+                currentUserEmail = "anonymous";
+            }
+
+            await LoadHistoryAsync();
+        }
+    }
+
+    public async Task RefreshAsync()
+    {
+        isLoading = true;
+        StateHasChanged();
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        try
+        {
+            if (CloudStorage.IsConfigured)
+            {
+                Result<IReadOnlyList<ConversionHistoryItem>> historyResult = await CloudStorage.GetUserConversionHistoryAsync(currentUserEmail);
+                historyItems = historyResult.IsSuccess && historyResult.Value is { } list
+                    ? list.Where(x => !x.IsExpired).ToList()
+                    : [];
+
+                // Auto-select the first (most recent) item on load for desktop
+                if (historyItems.Count > 0 && selectedResult == null)
+                {
+                    await LoadIntoViewerAsync(historyItems[0], fromMobile: false);
+                }
+            }
+            else
+            {
+                historyItems = [];
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load conversion history for {Email}", currentUserEmail);
+            historyItems = [];
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadIntoViewerAsync(ConversionHistoryItem item, bool fromMobile = false)
+    {
+        if (fromMobile)
+        {
+            isMobileViewing = true;
+        }
+
+        if (selectedJobId == item.JobId)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        if (loadingJobId != null) return;
+        loadingJobId = item.JobId;
+        StateHasChanged();
+
+        try
+        {
+            Result<string> markdownResult = await CloudStorage.GetMarkdownContentAsync(item.MarkdownObjectPath);
+            if (markdownResult.IsSuccess && !string.IsNullOrEmpty(markdownResult.Value))
+            {
+                selectedResult = new(
+                    JobId: item.JobId,
+                    FileName: item.OriginalFileName,
+                    IsSuccess: true,
+                    MarkdownText: markdownResult.Value,
+                    EngineUsed: item.EngineUsed,
+                    DurationMs: item.DurationMs,
+                    WordCount: item.WordCount,
+                    CharacterCount: item.CharacterCount,
+                    EstimatedTokens: item.EstimatedTokens,
+                    ErrorMessage: null,
+                    StorageUri: $"gs://{CloudStorage.BucketName}/{item.MarkdownObjectPath}"
+                );
+                selectedJobId = item.JobId;
+                selectedOriginalPath = item.OriginalObjectPath;
+
+                if (OnLoadResult.HasDelegate)
+                {
+                    await OnLoadResult.InvokeAsync(selectedResult);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load historical markdown for job {JobId}", item.JobId);
+        }
+        finally
+        {
+            loadingJobId = null;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseMobileViewer()
+    {
+        isMobileViewing = false;
+        StateHasChanged();
+    }
+
+    private void CloseViewer()
+    {
+        isMobileViewing = false;
+        selectedResult = null;
+        selectedJobId = null;
+        selectedOriginalPath = null;
+        StateHasChanged();
+    }
+
+    private async Task CopyHistoryMarkdownAsync(ConversionHistoryItem item)
+    {
+        try
+        {
+            Result<string> markdownResult = await CloudStorage.GetMarkdownContentAsync(item.MarkdownObjectPath);
+            if (markdownResult.IsSuccess && !string.IsNullOrEmpty(markdownResult.Value))
+            {
+                await JS.InvokeVoidAsync("converterUtils.copyToClipboard", markdownResult.Value);
+                copiedJobId = item.JobId;
+                StateHasChanged();
+
+                await Task.Delay(2000);
+                copiedJobId = null;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to copy historical markdown for job {JobId}", item.JobId);
+        }
+    }
+}

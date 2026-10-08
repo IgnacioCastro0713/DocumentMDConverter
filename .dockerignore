@@ -1,0 +1,10 @@
+﻿**/bin/
+**/obj/
+.git/
+.idea/
+.vscode/
+*.user
+**/appsettings.Local.json
+**/*.tfvars
+**/*.tfstate*
+**/.terraform/

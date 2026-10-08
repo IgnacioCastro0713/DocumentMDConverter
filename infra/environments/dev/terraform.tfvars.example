@@ -1,0 +1,9 @@
+﻿# Google Cloud Project Configuration for DEV
+project_id             = "<project_id>"
+region                 = "us-central1"
+container_image        = "gcr.io/<project_id>/document-md-converter-dev:v0.0.1"
+
+# Cuentas/dominios con acceso vía IAP (roles/iap.httpsResourceAccessor)
+iap_authorized_domains = ["user:person1@example.com", "user:person2@example.com"]
+
+bucket_prefix          = "<globally-unique-prefix>"

@@ -1,0 +1,124 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using DocumentMDConverter.Domain.Models
+@using DocumentMDConverter.Web.Components.Shared
+
+<PageTitle>DocumentMDConverter — Document to Markdown</PageTitle>
+
+<div class="home-container">
+    <!-- Top Navigation Tabs -->
+    <div class="d-flex align-items-center justify-content-between mb-4 pb-2" style="border-bottom: 1px solid var(--border-subtle);">
+        <div class="nav-tabs-pill-group">
+            <button type="button" 
+                    class="nav-tab-pill @(activeTab == "converter" ? "active" : "")" 
+                    @onclick='() => SetActiveTab("converter")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                <span>Convert</span>
+            </button>
+
+            <button type="button" 
+                    class="nav-tab-pill @(activeTab == "history" ? "active" : "")" 
+                    @onclick='() => SetActiveTab("history")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>Recent Conversions</span>
+            </button>
+
+            <button type="button" 
+                    class="nav-tab-pill @(activeTab == "markdown-preview" ? "active" : "")" 
+                    @onclick='() => SetActiveTab("markdown-preview")'>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 5h16v14H4z"></path>
+                    <path d="m8 10 2 2-2 2"></path>
+                    <path d="M12 14h4"></path>
+                </svg>
+                <span>Markdown Preview</span>
+            </button>
+        </div>
+    </div>
+
+    @* TAB 1: Converter *@
+    @if (activeTab == "converter")
+    {
+        <div class="tab-pane-transition" @key='"converter"'>
+            <!-- Clean Minimalist Header & Dropzone -->
+            <div class="@(currentResult != null ? "home-upload-compact mb-4" : "home-upload-hero mb-4")">
+                <div class="mb-4">
+                    <h1 class="page-headline">Document to Markdown</h1>
+                    <p class="page-subheadline">
+                        High-speed conversion for DOCX, PPTX, XLSX, and PDF documents into clean, structured Markdown.
+                    </p>
+                </div>
+
+                <!-- Dropzone Component -->
+                <DocumentDropzone OnConverted="HandleConversionCompleted" OnBatchCompleted="HandleBatchCompleted" />
+            </div>
+
+            <!-- Viewer Result Component (Expands to full widescreen width up to 1680px) -->
+            @if (currentResult != null)
+            {
+                <div class="home-result-container mt-4">
+                    <MarkdownViewer Result="currentResult" 
+                                    BatchResults="currentBatchResults"
+                                    OnSelectBatchItem="HandleSelectBatchItem"
+                                    OnClear="ClearResults" />
+                </div>
+            }
+        </div>
+    }
+
+    <div class="tab-pane-transition @(activeTab == "markdown-preview" ? "" : "d-none")">
+        <MarkdownPlayground />
+    </div>
+
+    @* TAB 2: History (7-Day Cloud Storage Retention) *@
+    @if (activeTab == "history")
+    {
+        <div class="tab-pane-transition" @key='"history"'>
+            <ConversionHistory />
+        </div>
+    }
+</div>
+
+@code {
+    private string activeTab = "converter";
+    private ConversionResult? currentResult;
+    private List<ConversionResult> currentBatchResults = [];
+
+    private void SetActiveTab(string tab)
+    {
+        activeTab = tab;
+    }
+
+    private void HandleConversionCompleted(ConversionResult result)
+    {
+        currentResult = result;
+        StateHasChanged();
+    }
+
+    private void HandleBatchCompleted(IReadOnlyList<ConversionResult> results)
+    {
+        currentBatchResults = results.ToList();
+        StateHasChanged();
+    }
+
+    private void HandleSelectBatchItem(ConversionResult item)
+    {
+        currentResult = item;
+        StateHasChanged();
+    }
+
+    private void ClearResults()
+    {
+        currentResult = null;
+        currentBatchResults.Clear();
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,282 @@
+@using DocumentMDConverter.Domain.Models
+@using DocumentMDConverter.Application.Interfaces
+@inject IMarkdownRendererService Renderer
+@inject IJSRuntime JS
+
+<div class="minimal-panel p-4">
+    <!-- Batch Document Tabs (when viewing a multi-file batch) -->
+    @if (BatchResults != null && BatchResults.Count > 1)
+    {
+        <div class="batch-viewer-tabs d-flex align-items-center gap-1 mb-3 pb-2 overflow-auto" style="border-bottom: 1px solid var(--border-subtle);">
+            @foreach (ConversionResult item in BatchResults)
+            {
+                <button type="button" 
+                        class="batch-viewer-tab @(Result.JobId == item.JobId ? "active" : "")" 
+                        @onclick="() => OnSelectBatchItem.InvokeAsync(item)"
+                        title="@item.FileName">
+                    <span class="batch-tab-format @FormatUtils.GetFormatBadgeClass(item.FileName)">@GetFileFormat(item.FileName)</span>
+                    <span class="batch-tab-title text-truncate">@item.FileName</span>
+                </button>
+            }
+        </div>
+    }
+
+    <!-- Header: Clean Title & Controls -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-2 pb-2" style="border-bottom: 1px solid var(--border-subtle);">
+        <!-- Title & Format -->
+        <div class="d-flex align-items-center gap-2 min-w-0">
+            <span class="doc-format-badge @FormatUtils.GetFormatBadgeClass(Result.FileName)">@GetFileFormat(Result.FileName)</span>
+            <h6 class="m-0 theme-text-primary fw-semibold text-truncate" style="font-size: 1rem; max-width: clamp(250px, 35vw, 650px);" title="@Result.FileName">
+                @Result.FileName
+            </h6>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <!-- Segmented View Mode Toggle -->
+            <div class="segmented-control">
+                <button class="segmented-btn @(activeTab == "preview" ? "active" : "")" @onclick='() => activeTab = "preview"' title="Rendered HTML document view">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>Preview</span>
+                </button>
+                <button class="segmented-btn @(activeTab == "split" ? "active" : "")" @onclick='() => activeTab = "split"' title="Side-by-side Markdown & Rendered preview">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+                    <span>Split</span>
+                </button>
+                <button class="segmented-btn @(activeTab == "raw" ? "active" : "")" @onclick='() => activeTab = "raw"' title="Raw Markdown code editor view">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    <span>Raw</span>
+                </button>
+            </div>
+
+            <button class="btn-minimal-secondary" @onclick="CopyMarkdownAsync" title="Copy markdown to clipboard">
+                @if (showCopiedFeedback)
+                {
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span style="color: #34d399;">Copied</span>
+                }
+                else
+                {
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copy</span>
+                }
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(OriginalDownloadUrl))
+            {
+                <a href="@OriginalDownloadUrl"
+                   target="_blank"
+                   class="btn-minimal-secondary text-decoration-none d-inline-flex align-items-center gap-1"
+                   title="Download original document directly from Google Cloud Storage">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>Original</span>
+                </a>
+            }
+
+            <button class="btn-minimal-primary" @onclick="DownloadMarkdownAsync" title="Download .md file">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Download .md</span>
+            </button>
+
+            @if (OnClear.HasDelegate)
+            {
+                <button class="btn-minimal-secondary" title="@(ClearButtonText == "Close" ? "Close viewer" : "Clear and convert another")" @onclick="() => OnClear.InvokeAsync()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    <span>@ClearButtonText</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Technical Metadata Strip: Data Pills -->
+    <div class="viewer-meta-strip d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div class="meta-pill" title="Conversion Engine">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span class="meta-pill-label">Engine:</span>
+            <span class="meta-pill-value">@Result.EngineUsed</span>
+        </div>
+        <div class="meta-pill" title="Conversion Duration">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span class="meta-pill-label">Duration:</span>
+            <span class="meta-pill-value">@(Result.DurationMs >= 1000 ? $"{(Result.DurationMs / 1000.0):0.1}s" : $"{Result.DurationMs}ms")</span>
+        </div>
+        <div class="meta-pill" title="Extracted Word Count">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <span class="meta-pill-label">Words:</span>
+            <span class="meta-pill-value">@FormatUtils.FormatWordCount(Result.WordCount)</span>
+        </div>
+        <div class="meta-pill" title="Estimated LLM Tokens (approx 4 chars/token)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle><line x1="12" y1="2" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="22"></line><circle cx="12" cy="12" r="2"></circle></svg>
+            <span class="meta-pill-label">Tokens:</span>
+            <span class="meta-pill-value">~@Result.EstimatedTokens.ToString("N0")</span>
+        </div>
+    </div>
+
+    <!-- Tab Content Modes -->
+    @if (activeTab == "preview")
+    {
+        <!-- Mode 1: Full Rendered Document View in Canvas -->
+        <div class="markdown-canvas-wrapper" @key='$"preview-{Result.JobId}"'>
+            <div class="markdown-rendered-view document-canvas" @ref="renderedPreview">
+                @((MarkupString)renderedHtml)
+            </div>
+        </div>
+    }
+    else if (activeTab == "split")
+    {
+        <!-- Mode 2: Professional Split View (Side-by-side) -->
+        <div class="markdown-split-container resizable-split">
+            <!-- Left Pane: Code Editor -->
+            <div class="d-flex flex-column h-100">
+                <div class="split-pane-header">
+                    <span>Markdown Source</span>
+                    <span>@lineCount lines</span>
+                </div>
+                <div class="split-pane-body">
+                    <div class="editor-wrapper h-100 border-0 rounded-0" @key='$"split-editor-{Result.JobId}"'>
+                        <div class="editor-line-numbers">
+                            @for (int i = 1; i <= lineCount; i++)
+                            {
+                                <span>@i</span>
+                            }
+                        </div>
+                        <textarea class="editor-textarea" readonly onscroll="this.parentNode.querySelector('.editor-line-numbers').scrollTop = this.scrollTop">@Result.MarkdownText</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="split-pane-resizer"
+                 role="separator"
+                 aria-orientation="vertical"
+                 aria-label="Resize Markdown and preview panes"
+                 aria-valuemin="25"
+                 aria-valuemax="75"
+                 aria-valuenow="50"
+                 tabindex="0"></div>
+
+            <!-- Right Pane: Live Rendered Output -->
+            <div class="d-flex flex-column h-100">
+                <div class="split-pane-header">
+                    <span>Live Preview</span>
+                    <span>Document View</span>
+                </div>
+                <div class="split-pane-body p-3 bg-surface overflow-auto" @key='$"split-preview-{Result.JobId}"'>
+                    <div class="markdown-rendered-view p-0 pb-5 max-h-none" @ref="renderedPreview">
+                        @((MarkupString)renderedHtml)
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Mode 3: Full Monaco-Style Code Editor View -->
+        <div class="editor-wrapper" @key='$"raw-{Result.JobId}"'>
+            <div class="editor-line-numbers">
+                @for (int i = 1; i <= lineCount; i++)
+                {
+                    <span>@i</span>
+                }
+            </div>
+            <textarea class="editor-textarea" readonly onscroll="this.parentNode.querySelector('.editor-line-numbers').scrollTop = this.scrollTop">@Result.MarkdownText</textarea>
+        </div>
+    }
+</div>
+
+@if (showToast)
+{
+    <div class="toast-notice">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <span>Markdown copied to clipboard</span>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ConversionResult Result { get; set; } = default!;
+
+    [Parameter]
+    public IReadOnlyList<ConversionResult>? BatchResults { get; set; }
+
+    [Parameter]
+    public EventCallback<ConversionResult> OnSelectBatchItem { get; set; }
+
+    [Parameter]
+    public string? OriginalDownloadUrl { get; set; }
+
+    [Parameter]
+    public EventCallback OnClear { get; set; }
+
+    [Parameter]
+    public string ClearButtonText { get; set; } = "Clear";
+
+    private string activeTab = "preview";
+    private string renderedHtml = string.Empty;
+    private ElementReference renderedPreview;
+    private int lineCount = 1;
+    private bool showCopiedFeedback = false;
+    private bool showToast = false;
+
+    protected override void OnParametersSet()
+    {
+        if (Result != null && !string.IsNullOrEmpty(Result.MarkdownText))
+        {
+            renderedHtml = Renderer.RenderToHtml(Result.MarkdownText);
+            lineCount = Math.Max(1, Result.MarkdownText.Split('\n').Length);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (activeTab != "raw")
+        {
+            await JS.InvokeVoidAsync("converterUtils.renderMermaid", renderedPreview);
+        }
+    }
+
+    private static string GetFileFormat(string fileName) => FormatUtils.GetFormat(fileName);
+
+    private static bool IsRustEngine(string engineUsed)
+    {
+        return !string.IsNullOrEmpty(engineUsed) && 
+               (engineUsed.Contains("Rust", StringComparison.OrdinalIgnoreCase) || 
+                engineUsed.Contains("anydoc", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task CopyMarkdownAsync()
+    {
+        if (Result == null || string.IsNullOrEmpty(Result.MarkdownText)) return;
+
+        await JS.InvokeVoidAsync("converterUtils.copyToClipboard", Result.MarkdownText);
+        showCopiedFeedback = true;
+        showToast = true;
+        StateHasChanged();
+
+        await Task.Delay(2500);
+        showCopiedFeedback = false;
+        showToast = false;
+        StateHasChanged();
+    }
+
+    private async Task DownloadMarkdownAsync()
+    {
+        if (Result == null || string.IsNullOrEmpty(Result.MarkdownText)) return;
+
+        string targetName = Path.GetFileNameWithoutExtension(Result.FileName) + ".md";
+        await JS.InvokeVoidAsync("converterUtils.downloadMarkdownFile", targetName, Result.MarkdownText);
+    }
+}

@@ -1,0 +1,83 @@
+@inject IMarkdownRendererService Renderer
+@inject IJSRuntime JS
+
+<div class="markdown-playground">
+    <div class="markdown-playground-heading">
+        <div>
+            <h1>Markdown Preview</h1>
+            <p>Paste or write Markdown to see the rendered result.</p>
+        </div>
+    </div>
+
+    <div class="markdown-playground-layout resizable-split">
+        <section class="markdown-playground-pane" aria-labelledby="markdown-playground-source-label">
+            <div class="markdown-playground-pane-header">
+                <label id="markdown-playground-source-label" for="markdown-playground-source">Markdown source</label>
+                <span>Editor</span>
+            </div>
+            <div class="markdown-playground-editor">
+                <div class="editor-line-numbers" aria-hidden="true">
+                    @for (int i = 1; i <= lineCount; i++)
+                    {
+                        <span>@i</span>
+                    }
+                </div>
+                <textarea id="markdown-playground-source"
+                          class="markdown-playground-input"
+                          @bind="markdownText"
+                          @bind:event="oninput"
+                          @bind:after="UpdatePreview"
+                          placeholder="Paste Markdown here..."
+                          spellcheck="false"
+                          wrap="off"
+                          onscroll="this.parentNode.querySelector('.editor-line-numbers').scrollTop = this.scrollTop"></textarea>
+            </div>
+        </section>
+
+        <div class="split-pane-resizer"
+             role="separator"
+             aria-orientation="vertical"
+             aria-label="Resize Markdown and preview panes"
+             aria-valuemin="25"
+             aria-valuemax="75"
+             aria-valuenow="50"
+             tabindex="0"></div>
+
+        <section class="markdown-playground-pane" aria-labelledby="markdown-playground-preview-label">
+            <div class="markdown-playground-pane-header">
+                <span id="markdown-playground-preview-label">Rendered preview</span>
+                <span>Live</span>
+            </div>
+            <div class="markdown-playground-preview markdown-rendered-view @(string.IsNullOrWhiteSpace(markdownText) ? "is-empty" : "")" @ref="renderedPreview">
+            </div>
+        </section>
+    </div>
+</div>
+
+@code {
+    private string markdownText = string.Empty;
+    private string renderedHtml = string.Empty;
+    private int lineCount = 1;
+    private ElementReference renderedPreview;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await SetPreview();
+        await JS.InvokeVoidAsync("converterUtils.renderMermaid", renderedPreview);
+    }
+
+    private async Task UpdatePreview()
+    {
+        lineCount = Math.Max(1, markdownText.Split('\n').Length);
+        renderedHtml = Renderer.RenderToHtml(markdownText, disableHtml: true);
+        await SetPreview();
+    }
+
+    private Task SetPreview()
+    {
+        var html = string.IsNullOrWhiteSpace(markdownText)
+            ? "<div class=\"markdown-playground-empty\"><p>Preview appears here</p><span>Paste Markdown in the editor to get started.</span></div>"
+            : renderedHtml;
+        return JS.InvokeVoidAsync("converterUtils.setHtml", renderedPreview, html).AsTask();
+    }
+}

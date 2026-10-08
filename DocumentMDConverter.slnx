@@ -1,0 +1,59 @@
+<Solution>
+  <Folder Name="/infra/">
+    <File Path="infra/README.md" />
+  </Folder>
+  <Folder Name="/infra/environments/" />
+  <Folder Name="/infra/environments/dev/">
+    <File Path="infra/environments/dev/main.tf" />
+    <File Path="infra/environments/dev/variables.tf" />
+    <File Path="infra/environments/dev/outputs.tf" />
+    <File Path="infra/environments/dev/terraform.tfvars" />
+    <File Path="infra/environments/dev/terraform.tfvars.example" />
+  </Folder>
+  <Folder Name="/infra/environments/prod/">
+    <File Path="infra/environments/prod/main.tf" />
+    <File Path="infra/environments/prod/variables.tf" />
+    <File Path="infra/environments/prod/outputs.tf" />
+    <File Path="infra/environments/prod/terraform.tfvars.example" />
+  </Folder>
+  <Folder Name="/infra/modules/" />
+  <Folder Name="/infra/modules/artifact_registry/">
+    <File Path="infra/modules/artifact_registry/main.tf" />
+    <File Path="infra/modules/artifact_registry/outputs.tf" />
+    <File Path="infra/modules/artifact_registry/variables.tf" />
+  </Folder>
+  <Folder Name="/infra/modules/compute/">
+    <File Path="infra/modules/compute/main.tf" />
+    <File Path="infra/modules/compute/outputs.tf" />
+    <File Path="infra/modules/compute/variables.tf" />
+  </Folder>
+  <Folder Name="/infra/modules/iam/">
+    <File Path="infra/modules/iam/main.tf" />
+    <File Path="infra/modules/iam/outputs.tf" />
+    <File Path="infra/modules/iam/variables.tf" />
+  </Folder>
+  <Folder Name="/infra/modules/storage/">
+    <File Path="infra/modules/storage/main.tf" />
+    <File Path="infra/modules/storage/outputs.tf" />
+    <File Path="infra/modules/storage/variables.tf" />
+  </Folder>
+  <Folder Name="/solution-items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="DocumentMDConverter.slnx" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/specs/">
+    <File Path="specs/ARCHITECTURE.md" />
+    <File Path="specs/IMPLEMENTATION_PLAN.md" />
+    <File Path="specs/UI_UX_SPEC.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/DocumentMDConverter.Domain/DocumentMDConverter.Domain.csproj" />
+    <Project Path="src/DocumentMDConverter.Application/DocumentMDConverter.Application.csproj" />
+    <Project Path="src/DocumentMDConverter.Infrastructure/DocumentMDConverter.Infrastructure.csproj" />
+    <Project Path="src/DocumentMDConverter.Web/DocumentMDConverter.Web.csproj" />
+  </Folder>
+</Solution>

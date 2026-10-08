@@ -1,0 +1,48 @@
+@using DocumentMDConverter.Domain.Models
+
+<div class="history-sidebar-item @(IsSelected ? "history-sidebar-item-active" : "")" 
+     @onclick="() => OnSelect.InvokeAsync(Item)" 
+     role="button" 
+     tabindex="0"
+     key="@Item.JobId"
+     title="Click to view @Item.OriginalFileName">
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-1 min-w-0 w-100">
+        <div class="d-flex align-items-center gap-2 min-w-0 flex-grow-1 overflow-hidden">
+            <input type="checkbox" 
+                   class="form-check-input m-0 flex-shrink-0 align-self-center" 
+                   style="cursor: pointer; width: 15px; height: 15px;"
+                   checked="@IsChecked" 
+                   @onclick:stopPropagation="true" 
+                   @onchange="e => OnToggleCheck.InvokeAsync((bool)(e.Value ?? false))" />
+            <span class="doc-format-badge-sm @FormatUtils.GetFormatBadgeClass(Item.OriginalFileName) flex-shrink-0">@FormatUtils.GetFormat(Item.OriginalFileName)</span>
+            <span class="history-sidebar-title text-truncate min-w-0">
+                @Item.OriginalFileName
+            </span>
+        </div>
+        <span class="history-sidebar-time text-nowrap flex-shrink-0 ms-1">
+            @FormatUtils.FormatRelativeTime(Item.ConvertedAt)
+        </span>
+    </div>
+    <div class="d-flex align-items-center justify-content-between gap-2 history-sidebar-meta min-w-0 w-100" style="padding-left: 23px;">
+        <span class="text-truncate min-w-0 flex-grow-1">
+            @Item.EngineUsed • @FormatUtils.FormatWordCount(Item.WordCount) words • @FormatUtils.FormatFileSize(Item.OriginalFileSizeBytes)
+        </span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConversionHistoryItem Item { get; set; } = default!;
+
+    [Parameter]
+    public bool IsSelected { get; set; }
+
+    [Parameter]
+    public bool IsChecked { get; set; }
+
+    [Parameter]
+    public EventCallback<ConversionHistoryItem> OnSelect { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OnToggleCheck { get; set; }
+}

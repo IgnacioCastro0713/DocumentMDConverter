@@ -1,0 +1,33 @@
+# EditorConfig for DocumentMDConverter .NET Solution
+root = true
+
+[*.cs]
+# Standard C# formatting and code style
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# ==============================================================================
+# Code Analysis Rules Configuration (Centralized without SuppressMessage in code)
+# ==============================================================================
+
+# Domain & DTO design patterns
+dotnet_diagnostic.CA1054.severity = none   # URI-like parameters should not be strings (DTO records use string for JSON)
+dotnet_diagnostic.CA1056.severity = none   # URI-like properties should not be strings (DTO records use string for JSON)
+dotnet_diagnostic.CA1000.severity = none   # Do not declare static members on generic types (Result<T> factory methods)
+dotnet_diagnostic.CA1034.severity = none   # Nested types should not be visible (Discriminated unions in modern C# records)
+dotnet_diagnostic.CA1716.severity = none   # Identifiers should not match keywords ('Error' is standard domain terminology)
+dotnet_diagnostic.CA2225.severity = none   # Operator overloads have named alternates
+dotnet_diagnostic.CA1308.severity = none   # Normalize strings to uppercase (Storage object keys and emails are lowercase)
+dotnet_diagnostic.CA1031.severity = none   # Do not catch general exception types (Engine fallbacks and graceful degradation)
+
+# Application & Framework architectural idioms (ASP.NET Core / Blazor)
+dotnet_diagnostic.CA1515.severity = none   # Types can be made internal (Application API types)
+dotnet_diagnostic.CA2007.severity = none   # ConfigureAwait(false) is unnecessary in ASP.NET Core
+dotnet_diagnostic.CA1848.severity = none   # Use LoggerMessage delegates instead of ILogger extension methods
+dotnet_diagnostic.CA1873.severity = none   # Evaluation of logging arguments
+dotnet_diagnostic.CA1062.severity = none   # Validate parameter is non-null
+dotnet_diagnostic.CA1724.severity = none   # Type name conflicts with namespace
+dotnet_diagnostic.CA1305.severity = none   # Specify IFormatProvider

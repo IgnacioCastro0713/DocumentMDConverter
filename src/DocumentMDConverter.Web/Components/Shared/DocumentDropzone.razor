@@ -1,0 +1,803 @@
+@using DocumentMDConverter.Domain.Common
+@using DocumentMDConverter.Domain.Models
+@using DocumentMDConverter.Application.Interfaces
+@using DocumentMDConverter.Web.Endpoints
+@inject IDocumentConverterService ConverterService
+@inject IUserContextService UserContext
+@inject IJSRuntime JSRuntime
+@inject ILogger<DocumentDropzone> Logger
+@implements IDisposable
+
+<div class="minimal-panel p-4 mb-4">
+    <div class="mb-3">
+        <h6 class="m-0 theme-text-primary fw-semibold" style="font-size: 0.95rem;">Upload Document</h6>
+        <span class="theme-text-secondary" style="font-size: 0.82rem;">Select or drop single or multiple files to convert</span>
+    </div>
+
+    <!-- Standard Idle Dropzone Area (always in DOM so InputFile stream is never detached) -->
+    <div class="dropzone-container @(isDragging ? "drag-over" : "") @(isProcessing || hasStagedFile || hasStagedBatch ? "d-none" : "")"
+         @ondragover="HandleDragOver"
+         @ondragleave="HandleDragLeave"
+         @ondrop="HandleDragLeave">
+        
+        <InputFile id="document-dropzone-input"
+                   OnChange="HandleFileSelected" 
+                   multiple
+                   accept=".docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.pdf,.odt,.ods,.rtf,.png,.jpg,.jpeg,.webp" 
+                   class="position-absolute top-0 start-0 w-100 h-100 opacity-0" 
+                   style="cursor: pointer; z-index: 10;" />
+
+        <div class="dropzone-icon-box">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+        </div>
+
+        <div class="theme-text-primary fw-medium mb-1" style="font-size: 0.95rem;">
+            Drop your documents here, or browse
+        </div>
+        
+        <div class="theme-text-secondary mb-3" style="font-size: 0.8rem;">
+            Single file or batch up to 20 files • Up to 30MB each
+        </div>
+
+        <!-- Semantic Format Tags -->
+        <div class="d-flex flex-wrap justify-content-center gap-2 mb-2">
+            <span class="format-tag tag-format-docx">.docx</span>
+            <span class="format-tag tag-format-pptx">.pptx</span>
+            <span class="format-tag tag-format-xlsx">.xlsx</span>
+            <span class="format-tag tag-format-pdf">.pdf</span>
+            <span class="format-tag tag-format-csv">.csv</span>
+            <span class="format-tag tag-format-images">.png / .jpg</span>
+        </div>
+
+        <!-- Hotkey & Paste Hint Pill -->
+        <div class="d-flex align-items-center justify-content-center gap-2">
+            <span class="paste-hint-pill" title="Press Ctrl + V anywhere to paste an image or document">
+                <kbd>Ctrl</kbd> + <kbd>V</kbd> to paste screenshot / file
+            </span>
+        </div>
+    </div>
+
+    <!-- Full-Window Drag & Drop Overlay -->
+    <div id="window-drag-overlay" class="window-drag-overlay">
+        <div class="window-drag-box">
+            <div class="window-drag-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+            </div>
+            <h5 class="fw-bold mb-1 theme-text-primary">Drop documents anywhere</h5>
+            <p class="theme-text-secondary m-0" style="font-size: 0.88rem;">
+                Release to immediately convert DOCX, PPTX, XLSX, PDF, or images to Markdown
+            </p>
+        </div>
+    </div>
+
+    @if (hasStagedBatch)
+    {
+        <!-- Staged Batch Queue Card -->
+        <div class="active-file-card mb-3">
+            <!-- Header: Batch title and counters -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-2 pb-2" style="border-bottom: 1px solid var(--border-subtle);">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="file-avatar-box">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="theme-text-primary fw-semibold" style="font-size: 0.95rem;">
+                            Batch Queue (@batchItems.Count files)
+                        </div>
+                        <div class="theme-text-muted" style="font-size: 0.78rem;">
+                            @if (isBatchProcessing)
+                            {
+                                <span>Converting files sequentially...</span>
+                            }
+                            else if (batchItems.All(x => x.Status == BatchItemStatus.Completed || x.Status == BatchItemStatus.Failed))
+                            {
+                                <span>Completed (@batchItems.Count(x => x.Status == BatchItemStatus.Completed)/@batchItems.Count successful)</span>
+                            }
+                            else
+                            {
+                                <span>Ready to convert all files</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    @if (!isBatchProcessing && batchItems.Any(x => x.Status == BatchItemStatus.Pending))
+                    {
+                        <button type="button" class="btn-minimal-secondary btn-sm" @onclick="ClearBatch">
+                            Cancel all
+                        </button>
+                        <button type="button" class="btn-minimal-primary btn-sm" @onclick="ProcessBatchAsync">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            <span>Convert All (@batchItems.Count)</span>
+                        </button>
+                    }
+                    @if (batchItems.Any(x => x.Status == BatchItemStatus.Completed))
+                    {
+                        <button type="button" class="btn-minimal-primary btn-sm" @onclick="DownloadBatchZipAsync" disabled="@isDownloadingZip">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            <span>@(isDownloadingZip ? "Generating ZIP..." : "Download All (.ZIP)")</span>
+                        </button>
+                        @if (!isBatchProcessing)
+                        {
+                            <button type="button" class="btn-minimal-secondary btn-sm" @onclick="ClearBatch">
+                                New batch
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+
+            @{
+                int totalBatchCount = batchItems.Count;
+                int finishedBatchCount = batchItems.Count(x => x.Status is BatchItemStatus.Completed or BatchItemStatus.Failed);
+                int batchProgressPct = totalBatchCount > 0 ? (finishedBatchCount * 100) / totalBatchCount : 0;
+            }
+            @if (isBatchProcessing || finishedBatchCount > 0)
+            {
+                <div class="mb-3 px-1">
+                    <div class="d-flex justify-content-between align-items-center mb-1" style="font-size: 0.76rem;">
+                        <span class="theme-text-muted">
+                            @(isBatchProcessing ? "Overall progress" : "Batch completed")
+                        </span>
+                        <span class="fw-semibold theme-text-primary">
+                            @finishedBatchCount of @totalBatchCount files (@batchProgressPct%)
+                        </span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill @(batchProgressPct == 100 && !isBatchProcessing ? "progress-completed" : "")" 
+                             style="width: @(batchProgressPct)%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+            }
+
+            <!-- Items list -->
+            <div class="d-flex flex-column gap-2" style="max-height: 380px; overflow-y: auto;">
+                @foreach (BatchItem item in batchItems)
+                {
+                    <div class="d-flex align-items-center justify-content-between p-2 rounded-2" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle);">
+                        <div class="d-flex align-items-center gap-3 min-w-0">
+                            <!-- Status Indicator -->
+                            @if (item.Status == BatchItemStatus.Pending)
+                            {
+                                <span class="theme-text-muted" style="width: 22px; text-align: center; font-size: 0.85rem;">⏳</span>
+                            }
+                            else if (item.Status == BatchItemStatus.Processing)
+                            {
+                                <div class="spinner-border spinner-border-sm text-primary" role="status" style="width: 16px; height: 16px;"></div>
+                            }
+                            else if (item.Status == BatchItemStatus.Completed)
+                            {
+                                <span style="color: var(--accent-success-text); font-weight: bold; width: 22px; text-align: center;">✓</span>
+                            }
+                            else if (item.Status == BatchItemStatus.Failed)
+                            {
+                                <span style="color: var(--accent-error-text); font-weight: bold; width: 22px; text-align: center;">✕</span>
+                            }
+
+                            <span class="doc-format-badge-sm @FormatUtils.GetFormatBadgeClass(item.FileName) flex-shrink-0">@FormatUtils.GetFormat(item.FileName)</span>
+                            <div class="min-w-0">
+                                <div class="theme-text-primary fw-medium text-truncate" style="font-size: 0.85rem;" title="@item.FileName">
+                                    @item.FileName
+                                </div>
+                                <div class="theme-text-muted text-truncate" style="font-size: 0.74rem;">
+                                    @FormatFileSize(item.FileSize) • @item.StatusDetail
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                            @if (!isBatchProcessing && item.Status == BatchItemStatus.Pending)
+                            {
+                                <button type="button" 
+                                        class="btn p-1 border-0 text-muted" 
+                                        style="line-height: 1; border-radius: 4px; opacity: 0.7;"
+                                        @onclick="() => RemoveBatchItem(item)" 
+                                        title="Remove @item.FileName from queue">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            }
+                            @if (item.Status == BatchItemStatus.Completed && item.Result != null)
+                            {
+                                <button type="button" class="btn-minimal-secondary btn-sm py-1 px-2" style="font-size: 0.72rem;" @onclick="() => DownloadSingleItemMarkdownAsync(item)" title="Download .md">
+                                    Download .md
+                                </button>
+                                <button type="button" class="btn-minimal-primary btn-sm py-1 px-2" style="font-size: 0.72rem;" @onclick="() => ViewBatchItem(item)" title="Open in viewer">
+                                    View
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (hasStagedFile && !isProcessing)
+    {
+        <!-- Staged Document Preview Card (Waits for user click to convert) -->
+        <div class="active-file-card">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div class="d-flex align-items-center gap-3 min-w-0">
+                    <span class="doc-format-badge @FormatUtils.GetFormatBadgeClass(stagedFileName) flex-shrink-0" style="font-size: 0.82rem; padding: 0.35rem 0.65rem;">
+                        @FormatUtils.GetFormat(stagedFileName)
+                    </span>
+                    <div class="min-w-0">
+                        <div class="theme-text-primary fw-medium text-truncate" style="font-size: 0.95rem;">@stagedFileName</div>
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            <span class="theme-text-secondary" style="font-size: 0.78rem;">@FormatFileSize(stagedFileSize)</span>
+                            <span class="metric-pill" style="font-size: 0.72rem; padding: 0.1rem 0.45rem;">Ready to convert</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn-minimal-secondary" @onclick="CancelStagedFile" title="Choose another file">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                        <span>Change file</span>
+                    </button>
+                    <button class="btn-minimal-primary" @onclick="ProcessStagedFileAsync">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        <span>Convert to Markdown</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (isProcessing)
+    {
+        <!-- Active Processing Card with Real-Time Non-Technical Stepper -->
+        <div class="active-file-card">
+            <!-- File info header -->
+            <div class="d-flex align-items-center gap-3">
+                <span class="doc-format-badge @FormatUtils.GetFormatBadgeClass(activeFileName) flex-shrink-0" style="font-size: 0.82rem; padding: 0.35rem 0.65rem;">
+                    @FormatUtils.GetFormat(activeFileName)
+                </span>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="theme-text-primary fw-medium text-truncate" style="font-size: 0.95rem;">@activeFileName</div>
+                    <div class="theme-text-secondary" style="font-size: 0.78rem;">@FormatFileSize(activeFileSize) · Processing</div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="pulse-indicator"></span>
+                    <span class="theme-text-secondary" style="font-size: 0.82rem;">@currentProgress.Percentage%</span>
+                </div>
+            </div>
+
+            <!-- Real-Time Visual Pipeline Stepper -->
+            <div class="pipeline-stepper">
+                <!-- Step 1: Upload -->
+                <div class="pipeline-step @GetStepState("Upload")">
+                    <div class="step-indicator">
+                        @if (IsStepCompleted("Upload"))
+                        {
+                            <span>✓</span>
+                        }
+                        else
+                        {
+                            <span>1</span>
+                        }
+                    </div>
+                    <span>Reading file</span>
+                </div>
+
+                <div class="step-divider @(IsStepCompleted("Upload") ? "completed" : "")"></div>
+
+                <!-- Step 2: Extraction / OCR -->
+                <div class="pipeline-step @GetStepState("Extract")">
+                    <div class="step-indicator">
+                        @if (IsStepCompleted("Extract"))
+                        {
+                            <span>✓</span>
+                        }
+                        else
+                        {
+                            <span>2</span>
+                        }
+                    </div>
+                    <span>@(currentProgress.StepName == "OCR" ? "Recognizing scan" : "Extracting content")</span>
+                </div>
+
+                <div class="step-divider @(IsStepCompleted("Extract") ? "completed" : "")"></div>
+
+                <!-- Step 3: Formatting -->
+                <div class="pipeline-step @GetStepState("Format")">
+                    <div class="step-indicator">
+                        @if (IsStepCompleted("Format"))
+                        {
+                            <span>✓</span>
+                        }
+                        else
+                        {
+                            <span>3</span>
+                        }
+                    </div>
+                    <span>Markdown ready</span>
+                </div>
+            </div>
+
+            <!-- Real-Time Progress Bar & Human Status Message -->
+            <div class="mt-3">
+                <div class="progress-track mb-2">
+                    <div class="progress-fill" style="width: @(currentProgress.Percentage)%"></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center text-secondary" style="font-size: 0.8rem;">
+                    <span>@currentProgress.Detail</span>
+                    <span>Please keep this window open</span>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Error Alert -->
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="mt-3 p-3 rounded-2 d-flex align-items-center justify-content-between" style="background: var(--accent-error-subtle); border: 1px solid rgba(248, 113, 113, 0.2); color: var(--accent-error-text);">
+            <div class="d-flex align-items-center gap-2" style="font-size: 0.85rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>@errorMessage</span>
+            </div>
+            <button class="btn btn-sm text-secondary p-0" @onclick="() => errorMessage = null">✕</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback<ConversionResult> OnConverted { get; set; }
+
+    [Parameter]
+    public EventCallback<IReadOnlyList<ConversionResult>> OnBatchCompleted { get; set; }
+
+    private bool isDragging = false;
+    private bool isProcessing = false;
+    private bool hasStagedFile = false;
+    private string? stagedFileName;
+    private long stagedFileSize;
+    private string? stagedContentType;
+    private IBrowserFile? stagedFile;
+
+    // Batch processing states
+    private readonly List<BatchItem> batchItems = [];
+    private bool hasStagedBatch = false;
+    private bool isBatchProcessing = false;
+    private bool isDownloadingZip = false;
+
+    private const bool enableOcrFallback = true;
+    private string? errorMessage = null;
+    private string activeFileName = string.Empty;
+    private long activeFileSize = 0;
+    private ConversionProgress currentProgress = new("Ready", 0, "Idle");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("converterUtils.initGlobalDropzone", "document-dropzone-input", "window-drag-overlay");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Dropzone global listeners could not be initialized");
+            }
+        }
+    }
+
+    private void HandleDragOver() => isDragging = true;
+    private void HandleDragLeave() => isDragging = false;
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        const long maxFileSize = 30 * 1024 * 1024; // 30MB
+        const int maxBatchCount = 20;
+
+        IReadOnlyList<IBrowserFile> files;
+        try
+        {
+            files = e.GetMultipleFiles(maxBatchCount);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error getting multiple files in dropzone");
+            errorMessage = $"Error selecting files: {ex.Message}";
+            return;
+        }
+
+        if (files.Count == 0) return;
+
+        if (files.Count == 1)
+        {
+            IBrowserFile file = files[0];
+            if (file.Name.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = "EPUB format is not supported.";
+                return;
+            }
+
+            if (file.Size > maxFileSize)
+            {
+                errorMessage = $"File '{file.Name}' exceeds the 30MB limit.";
+                return;
+            }
+
+            stagedFile = file;
+            stagedFileName = file.Name;
+            stagedFileSize = file.Size;
+            stagedContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
+            hasStagedFile = true;
+            hasStagedBatch = false;
+            isDragging = false;
+            StateHasChanged();
+            return;
+        }
+
+        // Multiple files (Batch) - Instant Staging (0ms wait time)
+        ClearBatch();
+        foreach (IBrowserFile file in files)
+        {
+            if (file.Name.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = $"File '{file.Name}' is an EPUB document which is not supported and was skipped.";
+                continue;
+            }
+
+            if (file.Size > maxFileSize)
+            {
+                errorMessage = $"File '{file.Name}' exceeds the 30MB limit and was skipped.";
+                continue;
+            }
+
+            batchItems.Add(new BatchItem
+            {
+                BrowserFile = file,
+                FileName = file.Name,
+                FileSize = file.Size,
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                Status = BatchItemStatus.Pending,
+                StatusDetail = "Ready"
+            });
+        }
+
+        if (batchItems.Count > 0)
+        {
+            hasStagedBatch = true;
+            hasStagedFile = false;
+            isDragging = false;
+        }
+        StateHasChanged();
+    }
+
+    private void CancelStagedFile()
+    {
+        stagedFile = null;
+        hasStagedFile = false;
+        stagedFileName = null;
+        errorMessage = null;
+        StateHasChanged();
+    }
+
+    private void ClearBatch()
+    {
+        batchItems.Clear();
+        hasStagedBatch = false;
+        isBatchProcessing = false;
+        errorMessage = null;
+        StateHasChanged();
+    }
+
+    private void RemoveBatchItem(BatchItem item)
+    {
+        batchItems.Remove(item);
+        if (batchItems.Count == 0)
+        {
+            ClearBatch();
+        }
+        else
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessStagedFileAsync()
+    {
+        if (!hasStagedFile || stagedFile == null || string.IsNullOrEmpty(stagedFileName)) return;
+
+        isProcessing = true;
+        errorMessage = null;
+        activeFileName = stagedFileName;
+        activeFileSize = stagedFileSize;
+        currentProgress = new("Upload", 20, "Reading document...");
+        StateHasChanged();
+
+        try
+        {
+            Progress<ConversionProgress> progressReporter = new(p =>
+            {
+                currentProgress = p;
+                InvokeAsync(StateHasChanged);
+            });
+
+            const long maxFileSize = 30 * 1024 * 1024;
+            await using Stream stream = stagedFile.OpenReadStream(maxAllowedSize: maxFileSize);
+
+            ConversionRequest request = new(
+                ContentStream: stream,
+                FileName: stagedFileName,
+                ContentType: stagedContentType ?? "application/octet-stream",
+                EnableOcrFallback: enableOcrFallback,
+                UserEmail: UserContext.GetCurrentUserEmail()
+            );
+
+            Result<ConversionResult> result = await ConverterService.ConvertAsync(request, progressReporter);
+
+            if (result.IsSuccess && result.Value is { } conversionResult)
+            {
+                // Visual pacing: if conversion was super fast, step through the pipeline smoothly
+                if (currentProgress.Percentage < 55)
+                {
+                    currentProgress = new ConversionProgress("Extract", 55, "Extracting text and tables...");
+                    StateHasChanged();
+                    await Task.Delay(400);
+                }
+
+                if (currentProgress.Percentage < 100)
+                {
+                    currentProgress = new ConversionProgress("Format", 100, "Markdown rendering complete!");
+                    StateHasChanged();
+                    await Task.Delay(500);
+                }
+
+                hasStagedFile = false;
+                stagedFile = null;
+                await OnConverted.InvokeAsync(conversionResult);
+            }
+            else
+            {
+                errorMessage = result.Error switch
+                {
+                    Error.NeedsOcrError ocr => ocr.Reason,
+                    Error.DocumentProtectedError prot => prot.Details,
+                    Error.ResourceLimitError res => res.Details,
+                    Error.MalformedError mal => mal.Details,
+                    Error.TimedOutError timeout => $"Document conversion timed out after {timeout.Seconds} seconds.",
+                    _ => result.Error?.Description ?? "Conversion failed."
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing file in dropzone");
+            errorMessage = $"Processing error: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessBatchAsync()
+    {
+        if (isBatchProcessing || batchItems.Count == 0) return;
+
+        isBatchProcessing = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        string userEmail = UserContext.GetCurrentUserEmail();
+        const long maxFileSize = 30 * 1024 * 1024;
+
+        foreach (BatchItem item in batchItems)
+        {
+            if (item.Status != BatchItemStatus.Pending)
+                continue;
+
+            item.Status = BatchItemStatus.Processing;
+            item.StatusDetail = "Reading file...";
+            StateHasChanged();
+
+            try
+            {
+                await using Stream stream = item.BrowserFile.OpenReadStream(maxAllowedSize: maxFileSize);
+
+                var request = new ConversionRequest(
+                    ContentStream: stream,
+                    FileName: item.FileName,
+                    ContentType: item.ContentType,
+                    EnableOcrFallback: enableOcrFallback,
+                    UserEmail: userEmail
+                );
+
+                var progressReporter = new Progress<ConversionProgress>(p =>
+                {
+                    item.StatusDetail = p.Detail ?? "Processing...";
+                    InvokeAsync(StateHasChanged);
+                });
+
+                Result<ConversionResult> result = await ConverterService.ConvertAsync(request, progressReporter);
+
+                if (result.IsSuccess && result.Value is { } conversionResult)
+                {
+                    item.Result = conversionResult;
+                    item.JobId = conversionResult.JobId;
+                    item.Status = BatchItemStatus.Completed;
+                    item.StatusDetail = $"{FormatUtils.FormatWordCount(conversionResult.WordCount)} words • {conversionResult.EngineUsed}";
+                }
+                else
+                {
+                    item.Status = BatchItemStatus.Failed;
+                    item.ErrorMessage = result.Error?.Description ?? "Conversion failed";
+                    item.StatusDetail = "Failed";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to convert {FileName} in batch", item.FileName);
+                item.Status = BatchItemStatus.Failed;
+                item.ErrorMessage = ex.Message;
+                item.StatusDetail = "Failed";
+            }
+
+            StateHasChanged();
+        }
+
+        isBatchProcessing = false;
+
+        var completedResults = batchItems
+            .Where(x => x.Status == BatchItemStatus.Completed && x.Result != null)
+            .Select(x => x.Result!)
+            .ToList();
+
+        if (completedResults.Count > 0)
+        {
+            if (OnBatchCompleted.HasDelegate)
+            {
+                await OnBatchCompleted.InvokeAsync(completedResults);
+            }
+            await OnConverted.InvokeAsync(completedResults[0]);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task DownloadBatchZipAsync()
+    {
+        var completedItems = batchItems
+            .Where(x => x.Status == BatchItemStatus.Completed && !string.IsNullOrWhiteSpace(x.JobId))
+            .Select(x => new BatchZipItem(x.JobId!, x.FileName))
+            .ToList();
+
+        if (completedItems.Count == 0) return;
+
+        isDownloadingZip = true;
+        StateHasChanged();
+
+        try
+        {
+            var payload = new BatchZipRequest(completedItems);
+            string zipName = $"conversions-{DateTime.UtcNow:yyyyMMdd-HHmmss}.zip";
+            await JSRuntime.InvokeVoidAsync("converterUtils.downloadFromPost", "/api/batch/zip", payload, zipName);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to download batch ZIP");
+            errorMessage = "Failed to generate ZIP download. Please try again.";
+        }
+        finally
+        {
+            isDownloadingZip = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadSingleItemMarkdownAsync(BatchItem item)
+    {
+        if (item.Result != null)
+        {
+            string mdFileName = $"{Path.GetFileNameWithoutExtension(item.FileName)}.md";
+            await JSRuntime.InvokeVoidAsync("converterUtils.downloadMarkdownFile", mdFileName, item.Result.MarkdownText);
+        }
+    }
+
+    private async Task ViewBatchItem(BatchItem item)
+    {
+        if (item.Result != null)
+        {
+            var completedResults = batchItems
+                .Where(x => x.Status == BatchItemStatus.Completed && x.Result != null)
+                .Select(x => x.Result!)
+                .ToList();
+
+            if (completedResults.Count > 1 && OnBatchCompleted.HasDelegate)
+            {
+                await OnBatchCompleted.InvokeAsync(completedResults);
+            }
+
+            await OnConverted.InvokeAsync(item.Result);
+        }
+    }
+
+    public void Dispose()
+    {
+        batchItems.Clear();
+    }
+
+    private string GetStepState(string stepName)
+    {
+        if (IsStepCompleted(stepName)) return "completed";
+        if (IsStepActive(stepName)) return "active";
+        return "";
+    }
+
+    private bool IsStepActive(string stepName)
+    {
+        return stepName switch
+        {
+            "Upload" => currentProgress.StepName == "Upload",
+            "Extract" => currentProgress.StepName is "Extract" or "OCR",
+            "Format" => currentProgress.StepName is "Format" or "Completed",
+            _ => false
+        };
+    }
+
+    private bool IsStepCompleted(string stepName)
+    {
+        return stepName switch
+        {
+            "Upload" => currentProgress.Percentage > 25,
+            "Extract" => currentProgress.Percentage > 80,
+            "Format" => currentProgress.Percentage >= 100,
+            _ => false
+        };
+    }
+
+    private static string FormatFileSize(long bytes) => FormatUtils.FormatFileSize(bytes);
+
+    private sealed class BatchItem
+    {
+        public required IBrowserFile BrowserFile { get; init; }
+        public required string FileName { get; init; }
+        public required long FileSize { get; init; }
+        public required string ContentType { get; init; }
+        public BatchItemStatus Status { get; set; } = BatchItemStatus.Pending;
+        public string? JobId { get; set; }
+        public ConversionResult? Result { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string StatusDetail { get; set; } = "Ready";
+    }
+
+    private enum BatchItemStatus
+    {
+        Pending,
+        Processing,
+        Completed,
+        Failed
+    }
+}
+

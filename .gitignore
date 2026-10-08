@@ -1,0 +1,45 @@
+## Ignore Visual Studio, Rider, VS Code, and other IDE directories
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.suo
+*.ntvs*
+*.njsproj
+*.sln.docstates
+
+## Ignore build and compilation outputs
+bin/
+obj/
+[Oo]bj/
+[Bb]in/
+publish/
+dist/
+
+## OS-specific files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+## Secret and configuration overrides
+appsettings.Local.json
+*.local.json
+.env
+.terraform/
+*.tfvars
+*.tfvars.json
+*.tfstate
+*.tfstate.*
+
+## Testing and Code Coverage
+TestResults/
+*.clog
+*.cobertura.xml
+artifacts/
+
+.csproj.user
+__pycache__/
+*.pyc

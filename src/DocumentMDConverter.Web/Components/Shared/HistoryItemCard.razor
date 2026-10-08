@@ -1,0 +1,138 @@
+@using DocumentMDConverter.Domain.Models
+
+<div class="history-item-card @(IsSelected ? "history-item-card-selected" : "")" key="@Item.JobId">
+    <!-- Card Header -->
+    <div class="history-card-header">
+        <div class="d-flex align-items-center gap-2 min-w-0">
+            <span class="doc-format-badge @FormatUtils.GetFormatBadgeClass(Item.OriginalFileName)">@FormatUtils.GetFormat(Item.OriginalFileName)</span>
+            <span class="theme-text-primary fw-semibold text-truncate" style="font-size: 0.95rem; max-width: clamp(220px, 40vw, 550px);" title="@Item.OriginalFileName">
+                @Item.OriginalFileName
+            </span>
+            <span class="theme-text-muted" style="font-size: 0.8rem;">•</span>
+            <span class="theme-text-muted" style="font-size: 0.8rem;" title="@Item.ConvertedAt.ToString("f")">
+                @FormatUtils.FormatRelativeTime(Item.ConvertedAt)
+            </span>
+        </div>
+
+        <div>
+            @if (Item.DaysRemaining <= 1)
+            {
+                <span class="retention-countdown-badge retention-badge-expiring" title="Will be deleted within 24 hours">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Expires today
+                </span>
+            }
+            else
+            {
+                <span class="retention-countdown-badge retention-badge-active" title="Stored securely in GCS for 7 days">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Expires in @Item.DaysRemaining days
+                </span>
+            }
+        </div>
+    </div>
+
+    <!-- Metadata Row (Single flat structure, no nested subcards) -->
+    <div class="history-meta-bar">
+        <div class="d-flex flex-wrap align-items-center gap-2 theme-text-secondary" style="font-size: 0.82rem;">
+            <span>Size: <strong class="theme-text-primary">@FormatUtils.FormatFileSize(Item.OriginalFileSizeBytes)</strong></span>
+            <span class="theme-text-muted">•</span>
+            <span>Engine: <strong class="theme-text-primary">@Item.EngineUsed</strong></span>
+            <span class="theme-text-muted">•</span>
+            <span>Words: <strong class="theme-text-primary">@FormatUtils.FormatWordCount(Item.WordCount)</strong></span>
+            <span class="theme-text-muted">•</span>
+            <span>Tokens: <strong class="theme-text-primary">~@Item.EstimatedTokens.ToString("N0")</strong></span>
+            <span class="theme-text-muted">•</span>
+            <span>Speed: <strong class="theme-text-primary">@(Item.DurationMs / 1000.0)s</strong></span>
+        </div>
+    </div>
+
+    <!-- Actions Footer -->
+    <div class="history-card-actions">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            @if (IsSelected)
+            {
+                <button type="button" 
+                        class="btn-history-action btn-history-action-active" 
+                        @onclick="() => OnCloseView.InvokeAsync()"
+                        title="Currently open in viewer. Click to close.">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Viewing Now</span>
+                </button>
+            }
+            else if (IsLoading)
+            {
+                <button type="button" class="btn-history-action" disabled>
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    <span>Loading...</span>
+                </button>
+            }
+            else
+            {
+                <button type="button" 
+                        class="btn-history-action btn-history-action-primary" 
+                        @onclick="() => OnView.InvokeAsync(Item)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>Open in Viewer</span>
+                </button>
+            }
+
+            <button type="button" 
+                    class="btn-history-action" 
+                    @onclick="() => OnCopy.InvokeAsync(Item)"
+                    title="Copy Markdown text to clipboard">
+                @if (IsCopied)
+                {
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span style="color: #22c55e;">Copied!</span>
+                }
+                else
+                {
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>Copy Markdown</span>
+                }
+            </button>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="/api/history/download?path=@Uri.EscapeDataString(Item.OriginalObjectPath)"
+               target="_blank"
+               class="btn-history-action text-decoration-none d-inline-flex align-items-center gap-1"
+               title="Download original file directly from GCS">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Download Original</span>
+            </a>
+
+            <a href="/api/history/download?path=@Uri.EscapeDataString(Item.MarkdownObjectPath)"
+               target="_blank"
+               class="btn-history-action text-decoration-none d-inline-flex align-items-center gap-1"
+               title="Download markdown directly from GCS">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>Download .md</span>
+            </a>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConversionHistoryItem Item { get; set; } = default!;
+
+    [Parameter]
+    public bool IsSelected { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public bool IsCopied { get; set; }
+
+    [Parameter]
+    public EventCallback<ConversionHistoryItem> OnView { get; set; }
+
+    [Parameter]
+    public EventCallback OnCloseView { get; set; }
+
+    [Parameter]
+    public EventCallback<ConversionHistoryItem> OnCopy { get; set; }
+}
