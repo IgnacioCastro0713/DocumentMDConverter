@@ -167,7 +167,7 @@ sequenceDiagram
 **DEV** (PowerShell, from the repository root):
 
 ```powershell
-$v   = "v0.0.69"
+$v   = "v0.0.74"
 $img = "gcr.io/<project>/document-md-converter-dev:$v"
 docker build -f src/DocumentMDConverter.Web/Dockerfile -t $img .
 docker push $img

@@ -25,7 +25,7 @@ DocumentMDConverter provides a clean, responsive, high-end developer and enterpr
 | [Logo] DocumentMDConverter           [ user@company.com • ]  [ ☀️/🌙 Theme ] [ Docs ]    |
 +-----------------------------------------------------------------------------------------+
 |                                                                                         |
-|                    ( [Convert] )          ( [Recent Conversions (7d)] )                 |
+|                    ( [Convert] )   ( [Recent Conversions (7d)] )   ( [Markdown Preview] )       |
 |                                                                                         |
 +-----------------------------------------------------------------------------------------+
 ```
@@ -36,6 +36,7 @@ DocumentMDConverter provides a clean, responsive, high-end developer and enterpr
 * **Pill Navigation Tabs:**
   - **Convert Tab:** Ingestion dropzone and immediate conversion output.
   - **Recent Conversions Tab:** 7-day retention history with serverless GCS persistence.
+  - **Markdown Preview Tab:** standalone live editor and renderer (third tab).
 
 ---
 
@@ -153,6 +154,7 @@ On mobile and tablet viewports, clicking "Open in Viewer" slides a panel over th
 
 * Content container: `app-layout-container`; top padding is `1rem` below the navbar, bottom `1.5rem` (`3rem` on md+).
 * Viewer panes (Split, Raw, Markdown Preview, history viewer/sidebar) use tall heights: `clamp(700px, 120vh, 1800px)` (history panes `calc(120vh - 15rem)`, min `700px`); the page scrolls vertically, each pane scrolls internally. Mobile stacks panes at `minmax(500px, 90vh)` each.
+* The Convert result (`.home-result-container`) has no max-width, so it matches the Recent Conversions width (`app-layout-container`, up to 1680px); the rendered preview canvas (`.document-canvas`) is 99% of its pane.
 * The history sidebar is **not** sticky (it is taller than the viewport).
 * Line-number gutters (`.editor-line-numbers`) use `line-height: 1.344rem` (= textarea `0.84rem × 1.6`) and extra bottom padding so rows stay aligned with the textarea while scrolling.
 * Hover on history sidebar items must not translate the element: the list scrolls and clips overflow, which cut the first item's border.

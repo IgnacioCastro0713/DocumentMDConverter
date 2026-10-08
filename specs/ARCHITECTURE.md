@@ -8,10 +8,10 @@
 ## 2. Architecture Decisions
 
 ### 2.1 Unified Monolithic Approach (.NET 10)
-Rather than a complex distributed microservices architecture, a modern monolithic architecture was chosen in [`src/DocumentMDConverter.Web`](file:///C:/personal.projects/MDConverter/MDAIConverter/src/DocumentMDConverter.Web):
+Rather than a complex distributed microservices architecture, a modern monolithic architecture was chosen in [`src/DocumentMDConverter.Web`](../src/DocumentMDConverter.Web):
 * **Zero network latency overhead:** The Blazor UI directly accesses backend services in-process.
 * **Single deployment unit:** One Docker container, one Cloud Run service.
-* **Simplified maintenance:** The entire solution is managed within a single .NET solution [`DocumentMDConverter.slnx`](file:///C:/personal.projects/MDConverter/MDAIConverter/DocumentMDConverter.slnx) and modular Terraform environment in [`infra/`](file:///C:/personal.projects/MDConverter/MDAIConverter/infra).
+* **Simplified maintenance:** The entire solution is managed within a single .NET solution [`DocumentMDConverter.slnx`](../DocumentMDConverter.slnx) and modular Terraform environment in [`infra/`](../infra).
 
 ### 2.2 Two-Stage Conversion Strategy (anydoc + Cloud Vision)
 The conversion engine operates under a graceful fallback execution pattern:
@@ -86,7 +86,7 @@ All objects are partitioned by sanitized user email (retrieved via Google Identi
 ## 4. User Identity & Authentication (Google IAP)
 
 The application integrates natively with **Google Cloud Identity-Aware Proxy (IAP)**:
-* Service: [`UserContextService`](file:///C:/personal.projects/MDConverter/MDAIConverter/src/DocumentMDConverter.Web/Services/UserContextService.cs) implementing [`IUserContextService`](file:///C:/personal.projects/MDConverter/MDAIConverter/src/DocumentMDConverter.Application/Interfaces/IUserContextService.cs).
+* Service: [`UserContextService`](../src/DocumentMDConverter.Web/Services/UserContextService.cs) implementing [`IUserContextService`](../src/DocumentMDConverter.Application/Interfaces/IUserContextService.cs).
 * Reads the verified identity header `X-Goog-Authenticated-User-Email` injected by IAP.
 * Strips Google's internal namespace prefix (`accounts.google.com:`).
 * Falls back to `HttpContext.User.Identity.Name`, then to `Iap:DefaultDevUserEmail` (default `local.development@example.com`) for local development. Storage paths use `anonymous` only when no email is available.
@@ -107,10 +107,10 @@ graph TD
     History -->|"Drawer Mode (< 992px)"| Drawer["Slide-over Drawer + MarkdownViewer"]
 ```
 
-* **Pill Navigation Tabs:** Seamlessly toggle between "Convert" and "Recent Conversions".
+* **Pill Navigation Tabs:** Seamlessly toggle between "Convert", "Recent Conversions" and "Markdown Preview".
 * **Widescreen Split View (Desktop $\ge$ 992px):**
-  - Left column (380px): *Sticky* scrollable list of recent conversion cards. Active card highlighted with visual outline and "Viewing Now" badge.
-  - Right column (1fr): Complete [`MarkdownViewer`](file:///C:/personal.projects/MDConverter/MDAIConverter/src/DocumentMDConverter.Web/Components/Shared/MarkdownViewer.razor) with Preview, Split, and Raw tabs, token count, word count, copy, download, and close button.
+  - Left column (380px): Scrollable (non-sticky) list of recent conversion cards. Active card highlighted with visual outline and "Viewing Now" badge.
+  - Right column (1fr): Complete [`MarkdownViewer`](../src/DocumentMDConverter.Web/Components/Shared/MarkdownViewer.razor) with Preview, Split, and Raw tabs, token count, word count, copy, download, and close button.
   - Inspect historical conversions without ever leaving the History tab.
 * **Slide-over Drawer (Mobile $<$ 992px):**
   - Smooth slide-in panel with backdrop blur (`backdrop-filter: blur(3px)`) for compact screens.

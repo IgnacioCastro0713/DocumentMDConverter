@@ -83,7 +83,7 @@ This document tracks the roadmap, execution phases, and acceptance criteria for 
    - Authenticated user identification via `X-Goog-Authenticated-User-Email`.
    - Top-bar user badge with live connection status.
 3. **Responsive Master-Detail Split View & Mobile Drill-Down Navigation:**
-   - Default history view: Master-Detail split layout with 360px compact sidebar playlist (`HistoryListItem.razor`) and full [`MarkdownViewer.razor`](file:///C:/personal.projects/MDConverter/MDAIConverter/src/DocumentMDConverter.Web/Components/Shared/MarkdownViewer.razor).
+   - Default history view: Master-Detail split layout with 360px compact sidebar playlist (`HistoryListItem.razor`) and full [`MarkdownViewer.razor`](../src/DocumentMDConverter.Web/Components/Shared/MarkdownViewer.razor).
    - Auto-selection of most recent document on load for desktop (zero wasted screen space).
    - Mobile & tablet ($<$ 992px): Clean drill-down navigation (full-width playlist $\rightarrow$ full-width viewer with `[ ← Back to conversions ]`).
    - Compact word count notation starting at 100,000 words (`~100k`, `~110k`, `~1M`) via `FormatUtils.FormatWordCount`.
